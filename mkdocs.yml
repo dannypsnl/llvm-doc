@@ -1,4 +1,0 @@
-site_name: llir/llvm
-theme: readthedocs
-markdown_extensions:
-    - markdown_inline_graphviz
