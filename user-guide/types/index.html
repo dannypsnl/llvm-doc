@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  
+  
+  <link rel="shortcut icon" href="../../img/favicon.ico">
+  <title>High Level Types - llir/llvm</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700" />
+
+  <link rel="stylesheet" href="../../css/theme.css" />
+  <link rel="stylesheet" href="../../css/theme_extra.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css" />
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "High Level Types";
+    var mkdocs_page_input_path = "user-guide/types.md";
+    var mkdocs_page_url = null;
+  </script>
+  
+  <script src="../../js/jquery-2.1.1.min.js" defer></script>
+  <script src="../../js/modernizr-2.8.3.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script> 
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+        <a href="../.." class="icon icon-home"> llir/llvm</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+                <ul>
+                    <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                    </li>
+                </ul>
+                <p class="caption"><span class="caption-text">User Guide</span></p>
+                <ul class="current">
+                    <li class="toctree-l1"><a class="reference internal" href="../basic/">Basic Introduction</a>
+                    </li>
+                    <li class="toctree-l1 current"><a class="reference internal current" href="./">High Level Types</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#structure">Structure</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#algebra-data-type">Algebra Data Type</a>
+    </li>
+    </ul>
+                    </li>
+                </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="../..">llir/llvm</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../..">Docs</a> &raquo;</li>
+    
+      
+        
+          <li>User Guide &raquo;</li>
+        
+      
+    
+    <li>High Level Types</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="high-level-types">High level types</h1>
+<h2 id="structure">Structure</h2>
+<p>Structure is quite common and basic type in programming language.
+Here focus on how to create an equal LLVM mapping for structure.</p>
+<p>LLVM has the concept about structure type, but structure type in LLVM didn't have field name, how to get/set fields of structure would be a thing.
+Let's assume a structure: <code>foo</code> has a field named <code>x</code> with type <code>i32</code>.
+Below code shows how to access <code>x</code>.</p>
+<pre><code class="go">zero := constant.NewInt(types.I32, 0)
+m := ir.NewModule()
+
+foo := m.NewTypeDef(&quot;foo&quot;, types.NewStruct(types.I32))
+
+main := m.NewFunc(&quot;main&quot;, types.I32)
+b := main.NewBlock(&quot;&quot;)
+fooInstance := b.NewAlloca(foo)
+fieldX := b.NewGetElementPtr(foo, fooInstance, zero, zero)
+// now `fieldX` is a pointer to field `x` of `foo`.
+b.NewStore(constant.NewInt(types.I32, 10), fieldX)
+b.NewLoad(types.I32, fieldX)
+b.NewRet(zero)
+</code></pre>
+
+<p>Get element pointer(a.k.a. GEP) is the point here.
+It computes a pointer to any structure member with no overhead.
+Then <code>load</code> and <code>store</code> can work on it.</p>
+<p>To get more information about GEP can goto <a href="https://llvm.org/docs/LangRef.html#getelementptr-instruction">Lang Ref</a>.</p>
+<h2 id="algebra-data-type">Algebra Data Type</h2>
+<p>Algebra data type is a common concept in functional programming language.
+For example, Haskell can write:</p>
+<pre><code class="hs">data Expr =
+  EInt Int
+  | EBool Bool
+  | EString String
+</code></pre>
+
+<p>How to express such concept in LLVM?
+The idea was selecting the biggest size in all variants and use it as the size of this type.
+Do <code>bitcast</code> when need to access the actual value.
+Here is the code:</p>
+<pre><code class="go">mod := ir.NewModule()
+
+typeExpr := mod.NewTypeDef(&quot;Expr&quot;, types.NewStruct(
+    types.I8,
+    types.NewArray(8, types.I8),
+))
+// variant tag 0
+typeExprInt := mod.NewTypeDef(&quot;EInt&quot;, types.NewStruct(
+    types.I8,
+    types.I32,
+))
+// variant tag 1
+mod.NewTypeDef(&quot;EBool&quot;, types.NewStruct(
+    types.I8,
+    types.I1,
+))
+// variant tag 2
+mod.NewTypeDef(&quot;EString&quot;, types.NewStruct(
+    types.I8,
+    types.NewPointer(types.I8),
+))
+
+main := mod.NewFunc(
+    &quot;main&quot;,
+    types.I32,
+)
+b := main.NewBlock(&quot;&quot;)
+exprInstance := b.NewAlloca(typeExpr)
+exprTag := b.NewGetElementPtr(typeExpr, exprInstance, constI32(0), constI32(0))
+// set tag to 0
+b.NewStore(constI8(0), exprTag)
+exprIntInstance := b.NewBitCast(exprInstance, types.NewPointer(typeExprInt))
+exprIntValue := b.NewGetElementPtr(typeExprInt, exprIntInstance, constI32(0), constI32(1))
+b.NewStore(constI32(2), exprIntValue)
+b.NewRet(constI32(0))
+</code></pre>
+
+<p>These code produce:</p>
+<pre><code class="llvm">%Expr = type { i8, [8 x i8] }
+%EInt = type { i8, i32 }
+%EBool = type { i8, i1 }
+%EString = type { i8, i8* }
+
+define i32 @main() {
+; &lt;label&gt;:0
+    %1 = alloca %Expr
+    %2 = getelementptr %Expr, %Expr* %1, i32 0, i32 0
+    store i8 0, i8* %2
+    %3 = bitcast %Expr* %1 to %EInt*
+    %4 = getelementptr %EInt, %EInt* %3, i32 0, i32 1
+    store i32 2, i32* %4
+    ret i32 0
+}
+</code></pre>
+
+<p><code>tag</code> in each variant is important, for example, pattern matching in Haskell looks like:</p>
+<pre><code class="hs">case expr of
+  EInt i -&gt; &quot;int&quot;
+  EBool b -&gt; &quot;bool&quot;
+  EString s -&gt; &quot;string&quot;
+</code></pre>
+
+<p><code>case</code> expression would need tag to distinguish variant.</p>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+      
+        <a href="../basic/" class="btn btn-neutral" title="Basic Introduction"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+      
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="versions">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href="../basic/" style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+    </span>
+</div>
+    <script>var base_url = '../..';</script>
+    <script src="../../js/theme.js" defer></script>
+      <script src="../../search/main.js" defer></script>
+    <script defer>
+        window.onload = function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        };
+    </script>
+
+</body>
+</html>

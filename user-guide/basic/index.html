@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  
+  
+  <link rel="shortcut icon" href="../../img/favicon.ico">
+  <title>Basic Introduction - llir/llvm</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700" />
+
+  <link rel="stylesheet" href="../../css/theme.css" />
+  <link rel="stylesheet" href="../../css/theme_extra.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css" />
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "Basic Introduction";
+    var mkdocs_page_input_path = "user-guide/basic.md";
+    var mkdocs_page_url = null;
+  </script>
+  
+  <script src="../../js/jquery-2.1.1.min.js" defer></script>
+  <script src="../../js/modernizr-2.8.3.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script> 
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+        <a href="../.." class="icon icon-home"> llir/llvm</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+                <ul>
+                    <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                    </li>
+                </ul>
+                <p class="caption"><span class="caption-text">User Guide</span></p>
+                <ul class="current">
+                    <li class="toctree-l1 current"><a class="reference internal current" href="./">Basic Introduction</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#module">Module</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#global-variable">Global Variable</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#function">Function</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#prototype">Prototype</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#basic-block">Basic Block</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#instruction">Instruction</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#type">Type</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#conclusion">Conclusion</a>
+    </li>
+    </ul>
+                    </li>
+                    <li class="toctree-l1"><a class="reference internal" href="../types/">High Level Types</a>
+                    </li>
+                </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="../..">llir/llvm</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../..">Docs</a> &raquo;</li>
+    
+      
+        
+          <li>User Guide &raquo;</li>
+        
+      
+    
+    <li>Basic Introduction</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="basic-introduction">Basic Introduction</h1>
+<h2 id="module">Module</h2>
+<p>A LLVM IR file is a module. A module owns many global level components:</p>
+<ul>
+<li>global variable</li>
+<li>function</li>
+<li>type</li>
+<li>metadata</li>
+</ul>
+<p>In this basic introduction, we don't dig into metadata, but focus on what can we do with global variable, function, and type.</p>
+<p><a href="https://github.com/llir/llvm">llir/llvm</a> provides package <code>ir</code> for these concepts, let's see what can a C program being translated to LLVM IR using <a href="https://github.com/llir/llvm">llir/llvm</a>.</p>
+<p>C example:</p>
+<pre><code class="c">int g = 2;
+
+int add(int x, int y) {
+  return x + y;
+}
+int main() {
+  add(1, g);
+  return 0;
+}
+</code></pre>
+
+<p>Generate module:</p>
+<pre><code class="go">package main
+
+import (
+    &quot;github.com/llir/llvm/ir&quot;
+    &quot;github.com/llir/llvm/ir/constant&quot;
+    &quot;github.com/llir/llvm/ir/types&quot;
+)
+
+func main() {
+    m := ir.NewModule()
+
+    globalG := m.NewGlobalDef(&quot;g&quot;, constant.NewInt(types.I32, 2))
+
+    funcAdd := m.NewFunc(&quot;add&quot;, types.I32,
+        ir.NewParam(&quot;x&quot;, types.I32),
+        ir.NewParam(&quot;y&quot;, types.I32),
+    )
+    ab := funcAdd.NewBlock(&quot;&quot;)
+    ab.NewRet(ab.NewAdd(funcAdd.Params[0], funcAdd.Params[1]))
+
+    funcMain := m.NewFunc(
+        &quot;main&quot;,
+        types.I32,
+    )  // omit parameters
+    mb := funcMain.NewBlock(&quot;&quot;) // llir/llvm would give correct default name for block without name
+    mb.NewCall(funcAdd, constant.NewInt(types.I32, 1), mb.NewLoad(types.I32, globalG))
+    mb.NewRet(constant.NewInt(types.I32, 0))
+
+    println(m.String())
+}
+</code></pre>
+
+<p>Generated IR:</p>
+<pre><code class="llvm">@g = global i32 2
+
+define i32 @add(i32 %x, i32 %y) {
+; &lt;label&gt;:0
+    %1 = add i32 %x, %y
+    ret i32 %1
+}
+
+define i32 @main() {
+; &lt;label&gt;:0
+    %1 = load i32, i32* @g
+    %2 = call i32 @add(i32 1, i32 %1)
+    ret i32 0
+}
+</code></pre>
+
+<p>In this example, we have global variable and function, mapping to C code. Now we dig into global variable.</p>
+<h2 id="global-variable">Global Variable</h2>
+<p>Globals prefixed with <code>@</code> character.
+An important thing is globals in LLVM, is a pointer, so have to <code>load</code> for its value,<code>store</code> to update its value.</p>
+<h2 id="function">Function</h2>
+<p>As globals, function name prefixed with <code>@</code> character. Function composed by prototype and a group of basic blocks.
+If there has no basic block, then a function is a declaration, the following code would generate a declaration:</p>
+<pre><code class="go">m.NewFunc(
+    &quot;add&quot;,
+    types.I32,
+    ir.NewParam(&quot;&quot;, types.I32),
+    ir.NewParam(&quot;&quot;, types.I32),
+)
+</code></pre>
+
+<p>Output:</p>
+<pre><code class="llvm">declare i32 @add(i32, i32)
+</code></pre>
+
+<p>When we want to bind to existed function in others object files, we would create a declaration.</p>
+<h3 id="prototype">Prototype</h3>
+<p>Prototype means parameters and return type.</p>
+<h3 id="basic-block">Basic Block</h3>
+<p>If function is group of basic blocks, then basic blocks is a group of instructions.
+An important thing is most high-level expression would break down into few instructions.</p>
+<p><a href="https://github.com/llir/llvm">llir/llvm</a> provides API to create instructions by a basic block.
+To get more information, goto <a href="https://pkg.go.dev/github.com/llir/llvm@v0.3.0/ir?tab=doc#Block">Block API document</a>.</p>
+<h3 id="instruction">Instruction</h3>
+<p>Instruction is a set of operations on assembly abstraction level to operate on an abstract machine model.
+To get more information, goto <a href="https://llvm.org/docs/LangRef.html#instruction-reference">LLVM Language Reference Manual: instruction reference</a>.</p>
+<h2 id="type">Type</h2>
+<p>There are many types in LLVM type system, here focus on how to create a new type.</p>
+<pre><code class="go">m := ir.NewModule()
+
+m.NewTypeDef(&quot;foo&quot;, types.NewStruct(types.I32))
+</code></pre>
+
+<p>Above code would produce:</p>
+<pre><code class="llvm">%foo = type { i32 }
+</code></pre>
+
+<p>It could map to C code:</p>
+<pre><code class="c">struct foo {
+  int x;
+};
+</code></pre>
+
+<p>Notice in LLVM, structure field has no name.</p>
+<h2 id="conclusion">Conclusion</h2>
+<p>Hope previous sections provide enough information about how to get enough information to dig into details.
+We will not dig into the details of each instruction, instead of that, we would provide a whole picture about how to use the library.
+Therefore, the next section is a list of common high-level concept and how to map them to IR.</p>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../types/" class="btn btn-neutral float-right" title="High Level Types">Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+        <a href="../.." class="btn btn-neutral" title="Home"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+      
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="versions">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href="../.." style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+        <span style="margin-left: 15px"><a href="../types/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+    <script>var base_url = '../..';</script>
+    <script src="../../js/theme.js" defer></script>
+      <script src="../../search/main.js" defer></script>
+    <script defer>
+        window.onload = function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        };
+    </script>
+
+</body>
+</html>

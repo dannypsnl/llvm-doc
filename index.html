@@ -18,7 +18,7 @@
   
   <script>
     // Current page data
-    var mkdocs_page_name = "Welcome to llir/llvm";
+    var mkdocs_page_name = "Home";
     var mkdocs_page_input_path = "index.md";
     var mkdocs_page_url = null;
   </script>
@@ -48,7 +48,7 @@
 
       <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
                 <ul class="current">
-                    <li class="toctree-l1 current"><a class="reference internal current" href=".">Welcome to llir/llvm</a>
+                    <li class="toctree-l1 current"><a class="reference internal current" href=".">Home</a>
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a>
         <ul>
@@ -60,7 +60,16 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#usage">Usage</a>
+    </li>
     </ul>
+                    </li>
+                </ul>
+                <p class="caption"><span class="caption-text">User Guide</span></p>
+                <ul>
+                    <li class="toctree-l1"><a class="reference internal" href="user-guide/basic/">Basic Introduction</a>
+                    </li>
+                    <li class="toctree-l1"><a class="reference internal" href="user-guide/types/">High Level Types</a>
                     </li>
                 </ul>
       </div>
@@ -84,7 +93,7 @@
     
       
     
-    <li>Welcome to llir/llvm</li>
+    <li>Home</li>
     <li class="wy-breadcrumbs-aside">
       
     </li>
@@ -267,11 +276,24 @@
 Therefore, you don't have to compile LLVM(could take few hours), no fighting with cgo.
 Working under pure Go environment and start your journey.</p>
 <h2 id="installation">Installation</h2>
-<p><code>go get github.com/llir/llvm</code></p>
+<p>To install <a href="https://github.com/llir/llvm">llir/llvm</a>, all you need to do is: <code>go get github.com/llir/llvm</code>.</p>
+<h2 id="usage">Usage</h2>
+<p>According to packages, <a href="https://github.com/llir/llvm">llir/llvm</a> can be separated to two main parts:</p>
+<ol>
+<li><code>asm</code>: This package implements a parser for LLVM IR assembly files. Users can use it for analyzing LLVM IR files.</li>
+<li><code>ir</code>: This package declares the types used to represent LLVM IR modules. Users can use it for build LLVM IR modules and operating on them.</li>
+</ol>
               
             </div>
           </div>
           <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="user-guide/basic/" class="btn btn-neutral float-right" title="Basic Introduction">Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+    </div>
   
 
   <hr/>
@@ -296,6 +318,8 @@ Working under pure Go environment and start your journey.</p>
       
       
       
+        <span style="margin-left: 15px"><a href="user-guide/basic/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
     </span>
 </div>
     <script>var base_url = '.';</script>
@@ -312,5 +336,5 @@ Working under pure Go environment and start your journey.</p>
 
 <!--
 MkDocs version : 1.1
-Build Date UTC : 2020-03-10 12:30:14
+Build Date UTC : 2020-03-14 09:22:43
 -->
