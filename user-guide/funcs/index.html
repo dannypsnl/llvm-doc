@@ -59,7 +59,7 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#linkage">Linkage</a>
     </li>
-    <li class="toctree-l2"><a class="reference internal" href="#variant-argumentaka-vaarg">Variant Argument(a.k.a. VAArg)</a>
+    <li class="toctree-l2"><a class="reference internal" href="#variant-argument-aka-vaarg">Variant Argument (a.k.a. VAArg)</a>
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#function-overloading">Function Overloading</a>
     </li>
@@ -111,14 +111,14 @@
 
 add := m.NewFunc(&quot;add&quot;, types.I64, ir.NewParam(&quot;&quot;, types.I64))
 add.Linkage = enum.LinkageInternal
-add = m.NewFunc(&quot;add1&quot;, types.I64, ir.NewParam(&quot;&quot;, types.I64))
-add.Linkage = enum.LinkageLinkOnce
-add = m.NewFunc(&quot;add2&quot;, types.I64, ir.NewParam(&quot;&quot;, types.I64))
-add.Linkage = enum.LinkagePrivate
-add = m.NewFunc(&quot;add3&quot;, types.I64, ir.NewParam(&quot;&quot;, types.I64))
-add.Linkage = enum.LinkageWeak
-add = m.NewFunc(&quot;add4&quot;, types.I64, ir.NewParam(&quot;&quot;, types.I64))
-add.Linkage = enum.LinkageExternal
+add1 := m.NewFunc(&quot;add1&quot;, types.I64, ir.NewParam(&quot;&quot;, types.I64))
+add1.Linkage = enum.LinkageLinkOnce
+add2 := m.NewFunc(&quot;add2&quot;, types.I64, ir.NewParam(&quot;&quot;, types.I64))
+add2.Linkage = enum.LinkagePrivate
+add3 := m.NewFunc(&quot;add3&quot;, types.I64, ir.NewParam(&quot;&quot;, types.I64))
+add3.Linkage = enum.LinkageWeak
+add4 := m.NewFunc(&quot;add4&quot;, types.I64, ir.NewParam(&quot;&quot;, types.I64))
+add4.Linkage = enum.LinkageExternal
 </code></pre>
 
 <p>The code would produce:</p>
@@ -133,9 +133,9 @@ declare weak i64 @add3(i64)
 declare external i64 @add4(i64)
 </code></pre>
 
-<p>To get more information about linkage, read <a href="https://llvm.org/docs/LangRef.html#linkage-types">llvm doc</a> and <a href="https://pkg.go.dev/github.com/llir/llvm/ir/enum?tab=doc#Linkage">pkg.go.dev</a>.</p>
-<h3 id="variant-argumentaka-vaarg">Variant Argument(a.k.a. VAArg)</h3>
-<p>One example is <code>printf</code>:</p>
+<p>For further information about linkage, refer to <a href="https://llvm.org/docs/LangRef.html#linkage-types">LLVM doc</a> and <a href="https://pkg.go.dev/github.com/llir/llvm/ir/enum?tab=doc#Linkage">pkg.go.dev</a>.</p>
+<h3 id="variant-argument-aka-vaarg">Variant Argument (a.k.a. VAArg)</h3>
+<p>One example of a variadic function is <code>printf</code>. This is how to create a function prototype for <code>printf</code>:</p>
 <pre><code class="go">m := ir.NewModule()
 
 printf := m.NewFunc(
@@ -146,12 +146,12 @@ printf := m.NewFunc(
 printf.Sig.Variadic = true
 </code></pre>
 
-<p>The code would produce:</p>
+<p>The above code would produce the following IR:</p>
 <pre><code class="llvm">declare i32 @printf(i8*, ...)
 </code></pre>
 
 <h3 id="function-overloading">Function Overloading</h3>
-<p>There has no overloading in IR, therefore solution is creating two functions.</p>
+<p>There is no overloading in LLVM IR. One solution is to create one function per function signature, where each LLVM IR function would have a unique name (this is why C++ compilers do name mangling).</p>
               
             </div>
           </div>

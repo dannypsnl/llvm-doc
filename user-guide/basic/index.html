@@ -61,7 +61,7 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#function">Function</a>
         <ul>
-    <li class="toctree-l3"><a class="reference internal" href="#prototype">Prototype</a>
+    <li class="toctree-l3"><a class="reference internal" href="#function-prototype">Function Prototype</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#basic-block">Basic Block</a>
     </li>
@@ -118,15 +118,15 @@
               
                 <h1 id="basic-introduction">Basic Introduction</h1>
 <h2 id="module">Module</h2>
-<p>A LLVM IR file is a module. A module owns many global level components:</p>
+<p>An LLVM IR file is a module. A module has many top-level entities:</p>
 <ul>
-<li>global variable</li>
-<li>function</li>
-<li>type</li>
+<li>global variables</li>
+<li>functions</li>
+<li>types</li>
 <li>metadata</li>
 </ul>
-<p>In this basic introduction, we don't dig into metadata, but focus on what can we do with global variable, function, and type.</p>
-<p><a href="https://github.com/llir/llvm">llir/llvm</a> provides package <code>ir</code> for these concepts, let's see what can a C program being translated to LLVM IR using <a href="https://github.com/llir/llvm">llir/llvm</a>.</p>
+<p>In this basic introduction, we won't dig into metadata, but instead focus on what we can do with global variables, functions, and types.</p>
+<p><a href="https://github.com/llir/llvm">llir/llvm</a> provides package <a href="https://pkg.go.dev/github.com/llir/llvm/ir?tab=doc">ir</a> for these concepts. Let's see how a C program can be translated into LLVM IR using <a href="https://github.com/llir/llvm">llir/llvm</a>.</p>
 <p>C example:</p>
 <pre><code class="c">int g = 2;
 
@@ -134,8 +134,7 @@ int add(int x, int y) {
   return x + y;
 }
 int main() {
-  add(1, g);
-  return 0;
+  return add(1, g);
 }
 </code></pre>
 
@@ -165,8 +164,7 @@ func main() {
         types.I32,
     )  // omit parameters
     mb := funcMain.NewBlock(&quot;&quot;) // llir/llvm would give correct default name for block without name
-    mb.NewCall(funcAdd, constant.NewInt(types.I32, 1), mb.NewLoad(types.I32, globalG))
-    mb.NewRet(constant.NewInt(types.I32, 0))
+    mb.NewRet(mb.NewCall(funcAdd, constant.NewInt(types.I32, 1), mb.NewLoad(types.I32, globalG)))
 
     println(m.String())
 }
@@ -185,17 +183,17 @@ define i32 @main() {
 ; &lt;label&gt;:0
     %1 = load i32, i32* @g
     %2 = call i32 @add(i32 1, i32 %1)
-    ret i32 0
+    ret i32 %2
 }
 </code></pre>
 
-<p>In this example, we have global variable and function, mapping to C code. Now we dig into global variable.</p>
+<p>In this example, we have one global variable and two functions, mapping to C code. Now let's dig into global variables.</p>
 <h2 id="global-variable">Global Variable</h2>
-<p>Globals prefixed with <code>@</code> character.
-An important thing is globals in LLVM, is a pointer, so have to <code>load</code> for its value,<code>store</code> to update its value.</p>
+<p>In LLVM IR assembly, the identifier of global variables are prefixed with an <code>@</code> character.
+Importantly, global variables are represented in LLVM as pointers, so we have to use <a href="https://pkg.go.dev/github.com/llir/llvm/ir?tab=doc#InstLoad">load</a> to retreive the value and <a href="https://pkg.go.dev/github.com/llir/llvm/ir?tab=doc#InstStore">store</a> to update the value of a global variable.</p>
 <h2 id="function">Function</h2>
-<p>As globals, function name prefixed with <code>@</code> character. Function composed by prototype and a group of basic blocks.
-If there has no basic block, then a function is a declaration, the following code would generate a declaration:</p>
+<p>Like globals, in LLVM IR assembly the identifier of functions are prefixed with an <code>@</code> character. Functions are composed by a function prototype prototype and a group of basic blocks.
+A funciton without basic blocks is a function declaration. The following code would generate a function declaration:</p>
 <pre><code class="go">m.NewFunc(
     &quot;add&quot;,
     types.I32,
@@ -208,38 +206,38 @@ If there has no basic block, then a function is a declaration, the following cod
 <pre><code class="llvm">declare i32 @add(i32, i32)
 </code></pre>
 
-<p>When we want to bind to existed function in others object files, we would create a declaration.</p>
-<h3 id="prototype">Prototype</h3>
-<p>Prototype means parameters and return type.</p>
+<p>When we want to bind to existing functions defined in other object files, we would create function declarations.</p>
+<h3 id="function-prototype">Function Prototype</h3>
+<p>A function prototype or function signature defines the parameters and return type of a function.</p>
 <h3 id="basic-block">Basic Block</h3>
-<p>If function is group of basic blocks, then basic blocks is a group of instructions.
-An important thing is most high-level expression would break down into few instructions.</p>
+<p>If function is group of basic blocks, then a basic block is a group of instructions. The basic notion behind a basic block is that if any instruction of a basic block is executed, then all instructions of the basic block are executed. In other words, there may be no branching or terminating instruction in the middle of a basic block, and all incoming branches must transfer control flow to the first instruction of the basic block.</p>
+<p>It is worthwhile to note that most high-level expression would be lowered into a set of instructions, covering one or more basic blocks.</p>
 <p><a href="https://github.com/llir/llvm">llir/llvm</a> provides API to create instructions by a basic block.
-To get more information, goto <a href="https://pkg.go.dev/github.com/llir/llvm@v0.3.0/ir?tab=doc#Block">Block API document</a>.</p>
+For further information, refer to the <a href="https://pkg.go.dev/github.com/llir/llvm/ir?tab=doc#Block">Block API documentation</a>.</p>
 <h3 id="instruction">Instruction</h3>
-<p>Instruction is a set of operations on assembly abstraction level to operate on an abstract machine model.
-To get more information, goto <a href="https://llvm.org/docs/LangRef.html#instruction-reference">LLVM Language Reference Manual: instruction reference</a>.</p>
+<p>An instruction is a set of operations on assembly abstraction level which operate on an abstract machine model, as defined by LLVM.
+For further information, refer to the <a href="https://llvm.org/docs/LangRef.html#instruction-reference">Instruction Reference section of the LLVM Language Reference Manual</a>.</p>
 <h2 id="type">Type</h2>
-<p>There are many types in LLVM type system, here focus on how to create a new type.</p>
+<p>There are many types in LLVM type system, here we focus on how to create a new type.</p>
 <pre><code class="go">m := ir.NewModule()
 
 m.NewTypeDef(&quot;foo&quot;, types.NewStruct(types.I32))
 </code></pre>
 
-<p>Above code would produce:</p>
+<p>The above code would produce the following IR:</p>
 <pre><code class="llvm">%foo = type { i32 }
 </code></pre>
 
-<p>It could map to C code:</p>
-<pre><code class="c">struct foo {
+<p>Which could be mapped to the following C code:</p>
+<pre><code class="c">typedef struct {
   int x;
-};
+} foo;
 </code></pre>
 
-<p>Notice in LLVM, structure field has no name.</p>
+<p>Notice that in LLVM, structure fields have no name.</p>
 <h2 id="conclusion">Conclusion</h2>
-<p>Hope previous sections provide enough information about how to get enough information to dig into details.
-We will not dig into the details of each instruction, instead of that, we would provide a whole picture about how to use the library.
+<p>We hope that the previous sections have provide enough information about how to get use the documentation to dig into details.
+We will not dig into the details of each instruction; instead, we aim to provide a whole picture about how to use the library.
 Therefore, the next section is a list of common high-level concept and how to map them to IR.</p>
               
             </div>
