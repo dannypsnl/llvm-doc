@@ -55,6 +55,8 @@
                 <ul class="current">
                     <li class="toctree-l1"><a class="reference internal" href="../basic/">Basic Introduction</a>
                     </li>
+                    <li class="toctree-l1"><a class="reference internal" href="../control/">Control Flow</a>
+                    </li>
                     <li class="toctree-l1 current"><a class="reference internal current" href="./">More Function</a>
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#linkage">Linkage</a>
@@ -121,7 +123,7 @@
                 <h1 id="more-function">More Function</h1>
 <h3 id="linkage">Linkage</h3>
 <p>The following code shows some linkage can use in IR.</p>
-<pre><code class="go">m := ir.NewModule()
+<pre><code class="language-go">m := ir.NewModule()
 
 add := m.NewFunc(&quot;add&quot;, types.I64, ir.NewParam(&quot;&quot;, types.I64))
 add.Linkage = enum.LinkageInternal
@@ -134,9 +136,8 @@ add3.Linkage = enum.LinkageWeak
 add4 := m.NewFunc(&quot;add4&quot;, types.I64, ir.NewParam(&quot;&quot;, types.I64))
 add4.Linkage = enum.LinkageExternal
 </code></pre>
-
 <p>The code would produce:</p>
-<pre><code class="llvm">declare internal i64 @add(i64)
+<pre><code class="language-llvm">declare internal i64 @add(i64)
 
 declare linkonce i64 @add1(i64)
 
@@ -146,11 +147,10 @@ declare weak i64 @add3(i64)
 
 declare external i64 @add4(i64)
 </code></pre>
-
 <p>For further information about linkage, refer to <a href="https://llvm.org/docs/LangRef.html#linkage-types">LLVM doc</a> and <a href="https://pkg.go.dev/github.com/llir/llvm/ir/enum?tab=doc#Linkage">pkg.go.dev</a>.</p>
 <h3 id="variant-argument-aka-vaarg">Variant Argument (a.k.a. VAArg)</h3>
 <p>One example of a variadic function is <code>printf</code>. This is how to create a function prototype for <code>printf</code>:</p>
-<pre><code class="go">m := ir.NewModule()
+<pre><code class="language-go">m := ir.NewModule()
 
 printf := m.NewFunc(
     &quot;printf&quot;,
@@ -159,17 +159,15 @@ printf := m.NewFunc(
 )
 printf.Sig.Variadic = true
 </code></pre>
-
 <p>The above code would produce the following IR:</p>
-<pre><code class="llvm">declare i32 @printf(i8*, ...)
+<pre><code class="language-llvm">declare i32 @printf(i8*, ...)
 </code></pre>
-
 <h3 id="function-overloading">Function Overloading</h3>
 <p>There is no overloading in LLVM IR. One solution is to create one function per function signature, where each LLVM IR function would have a unique name (this is why C++ compilers do name mangling).</p>
 <h3 id="first-class-functionclosure">First-class Function(Closure)</h3>
 <h4 id="naive-implementation">Naive Implementation</h4>
 <p>Create a closure(a.k.a. first-class function) requires a place to store captured variables. In LLVM, the best way is create a structure for such case:</p>
-<pre><code class="go">m := ir.NewModule()
+<pre><code class="language-go">m := ir.NewModule()
 
 zero := constant.NewInt(types.I32, 0)
 one := constant.NewInt(types.I32, 1)
@@ -215,9 +213,8 @@ b.NewCall(printf, pointerToString, result)
 
 b.NewRet(constant.NewInt(types.I32, 0))
 </code></pre>
-
 <p>This is a huge example, I understand it's hard to read, but concept is clean. It would generate below LLVM IR:</p>
-<pre><code class="llvm">%id_capture = type { i32 }
+<pre><code class="language-llvm">%id_capture = type { i32 }
 %id_closure = type { %id_capture*, i32 (%id_capture*)* }
 
 @tmp = global [3 x i8] c&quot;%d\0A&quot;
@@ -254,7 +251,6 @@ define i32 @main() {
     ret i32 0
 }
 </code></pre>
-
 <p>Our <code>id</code> function captures an Integer and return it. To reach that <code>id_capture</code> was introduced for storing captured value. For passing whole closure in convenience, <code>id_closure</code> was introduced and stored capture structure and function pointer. When invoke a closure, get captured structure and function pointer from <code>id_closure</code> structure, then apply function with captured structure and additional arguments(if there's any). In this example omit the part about memory management, all structures allocated in the stack, this won't work in most real world case. Must notice this problem.</p>
 <h4 id="improvements">Improvements</h4>
 <p>The naive implementation is not good enough, we have several ways can improve it, but instead of implementing them I'm going to list what can we do:</p>
@@ -266,7 +262,7 @@ define i32 @main() {
 </ul>
 <h3 id="return-structure">Return Structure</h3>
 <p>When meet program that return structure by value, compiler has chance to remove such cloning. That's storing return structure into a reference passed by the caller. Which means, if we get:</p>
-<pre><code class="c">struct Foo {
+<pre><code class="language-c">struct Foo {
     // ...
 };
 
@@ -276,20 +272,18 @@ Foo foo() {
     return f;
 }
 </code></pre>
-
 <p>should compile to:</p>
-<pre><code class="llvm">define void @foo(%Foo* noalias sret f) {
+<pre><code class="language-llvm">define void @foo(%Foo* noalias sret f) {
     // ...
 }
 </code></pre>
-
 <ul>
 <li><code>sret</code> hints this is a return value.</li>
 <li><code>noalias</code> hints other arguments won't point to the same place, LLVM optimizer might rely on such fact, so don't add it everywhere.</li>
 </ul>
 <h4 id="add-parameter-attributes">Add parameter attributes</h4>
 <p>Here is example shows how to add parameter attributes:</p>
-<pre><code class="go">m := ir.NewModule()
+<pre><code class="language-go">m := ir.NewModule()
 
 fooTyp := m.NewTypeDef(&quot;Foo&quot;, types.NewStruct(
     types.I32,
@@ -309,7 +303,7 @@ m.NewFunc(&quot;foo&quot;, types.Void, retS)
         <a href="../types/" class="btn btn-neutral float-right" title="High Level Types">Next <span class="icon icon-circle-arrow-right"></span></a>
       
       
-        <a href="../basic/" class="btn btn-neutral" title="Basic Introduction"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../control/" class="btn btn-neutral" title="Control Flow"><span class="icon icon-circle-arrow-left"></span> Previous</a>
       
     </div>
   
@@ -335,7 +329,7 @@ m.NewFunc(&quot;foo&quot;, types.Void, retS)
     <span class="rst-current-version" data-toggle="rst-current-version">
       
       
-        <span><a href="../basic/" style="color: #fcfcfc;">&laquo; Previous</a></span>
+        <span><a href="../control/" style="color: #fcfcfc;">&laquo; Previous</a></span>
       
       
         <span style="margin-left: 15px"><a href="../types/" style="color: #fcfcfc">Next &raquo;</a></span>

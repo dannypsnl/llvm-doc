@@ -55,6 +55,8 @@
                 <ul class="current">
                     <li class="toctree-l1"><a class="reference internal" href="../basic/">Basic Introduction</a>
                     </li>
+                    <li class="toctree-l1"><a class="reference internal" href="../control/">Control Flow</a>
+                    </li>
                     <li class="toctree-l1"><a class="reference internal" href="../funcs/">More Function</a>
                     </li>
                     <li class="toctree-l1 current"><a class="reference internal current" href="./">High Level Types</a>
@@ -109,7 +111,7 @@ Here focus on how to create an equal LLVM mapping for structure.</p>
 <p>LLVM has the concept about structure type, but structure type in LLVM didn't have field name, how to get/set fields of structure would be a thing.
 Let's assume a structure: <code>foo</code> has a field named <code>x</code> with type <code>i32</code>.
 Below code shows how to access <code>x</code>.</p>
-<pre><code class="go">zero := constant.NewInt(types.I32, 0)
+<pre><code class="language-go">zero := constant.NewInt(types.I32, 0)
 m := ir.NewModule()
 
 foo := m.NewTypeDef(&quot;foo&quot;, types.NewStruct(types.I32))
@@ -123,7 +125,6 @@ b.NewStore(constant.NewInt(types.I32, 10), fieldX)
 b.NewLoad(types.I32, fieldX)
 b.NewRet(zero)
 </code></pre>
-
 <p>Get element pointer(a.k.a. GEP) is the point here.
 It computes a pointer to any structure member with no overhead.
 Then <code>load</code> and <code>store</code> can work on it.</p>
@@ -131,17 +132,16 @@ Then <code>load</code> and <code>store</code> can work on it.</p>
 <h2 id="algebra-data-type">Algebra Data Type</h2>
 <p>Algebra data type is a common concept in functional programming language.
 For example, Haskell can write:</p>
-<pre><code class="hs">data Expr =
+<pre><code class="language-hs">data Expr =
   EInt Int
   | EBool Bool
   | EString String
 </code></pre>
-
 <p>How to express such concept in LLVM?
 The idea was selecting the biggest size in all variants and use it as the size of this type.
 Do <code>bitcast</code> when need to access the actual value.
 Here is the code:</p>
-<pre><code class="go">mod := ir.NewModule()
+<pre><code class="language-go">mod := ir.NewModule()
 
 typeExpr := mod.NewTypeDef(&quot;Expr&quot;, types.NewStruct(
     types.I8,
@@ -177,9 +177,8 @@ exprIntValue := b.NewGetElementPtr(typeExprInt, exprIntInstance, constI32(0), co
 b.NewStore(constI32(2), exprIntValue)
 b.NewRet(constI32(0))
 </code></pre>
-
 <p>These code produce:</p>
-<pre><code class="llvm">%Expr = type { i8, [8 x i8] }
+<pre><code class="language-llvm">%Expr = type { i8, [8 x i8] }
 %EInt = type { i8, i32 }
 %EBool = type { i8, i1 }
 %EString = type { i8, i8* }
@@ -195,14 +194,12 @@ define i32 @main() {
     ret i32 0
 }
 </code></pre>
-
 <p><code>tag</code> in each variant is important, for example, pattern matching in Haskell looks like:</p>
-<pre><code class="hs">case expr of
+<pre><code class="language-hs">case expr of
   EInt i -&gt; &quot;int&quot;
   EBool b -&gt; &quot;bool&quot;
   EString s -&gt; &quot;string&quot;
 </code></pre>
-
 <p><code>case</code> expression would need tag to distinguish variant.</p>
               
             </div>

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  
+  
+  <link rel="shortcut icon" href="../../img/favicon.ico">
+  <title>Control Flow - llir/llvm</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700" />
+
+  <link rel="stylesheet" href="../../css/theme.css" />
+  <link rel="stylesheet" href="../../css/theme_extra.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css" />
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "Control Flow";
+    var mkdocs_page_input_path = "user-guide/control.md";
+    var mkdocs_page_url = null;
+  </script>
+  
+  <script src="../../js/jquery-2.1.1.min.js" defer></script>
+  <script src="../../js/modernizr-2.8.3.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script> 
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+        <a href="../.." class="icon icon-home"> llir/llvm</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+                <ul>
+                    <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                    </li>
+                </ul>
+                <p class="caption"><span class="caption-text">User Guide</span></p>
+                <ul class="current">
+                    <li class="toctree-l1"><a class="reference internal" href="../basic/">Basic Introduction</a>
+                    </li>
+                    <li class="toctree-l1 current"><a class="reference internal current" href="./">Control Flow</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#if">If</a>
+    </li>
+    </ul>
+                    </li>
+                    <li class="toctree-l1"><a class="reference internal" href="../funcs/">More Function</a>
+                    </li>
+                    <li class="toctree-l1"><a class="reference internal" href="../types/">High Level Types</a>
+                    </li>
+                </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="../..">llir/llvm</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../..">Docs</a> &raquo;</li>
+    
+      
+        
+          <li>User Guide &raquo;</li>
+        
+      
+    
+    <li>Control Flow</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="control-flow">Control Flow</h1>
+<h3 id="if">If</h3>
+<p>Since we can let:</p>
+<pre><code class="language-go">if condition {
+    // A
+} else if condition {
+    // B
+} else {
+    // C
+}
+</code></pre>
+<p>became:</p>
+<pre><code class="language-go">if condition {
+    // A
+} else {
+    if condition {
+        // B
+    } else {
+        // C
+    }
+}
+</code></pre>
+<p>We don't have to convert any <strong>else-if</strong> pattern. Therefore, our source AST looks like this:</p>
+<pre><code class="language-go">type Expr interface{ isExpr() Expr }
+type EVoid struct{ Expr }
+type EBool struct {
+    Expr
+    V bool
+}
+
+type Stmt interface{ isStmt() Stmt }
+type SIf struct {
+    Stmt
+    Cond Expr
+    Then Stmt
+    Else Stmt
+}
+type SRet struct {
+    Stmt
+    Val Expr
+}
+</code></pre>
+<p>First, we limit expression to <code>EBool</code> and <code>EVoid</code>, and statement to <code>SIf</code> and <code>SRet</code>, to get a simple subset to focus on our purpose. Then we can get transformers to generate control flow <strong>if</strong>.</p>
+<ol>
+<li>generate value for expression, <code>0</code> for <code>false</code>, non <code>0</code> for <code>true</code></li>
+</ol>
+<pre><code class="language-go">func compileExpr(b *ir.Block, e Expr) value.Value {
+    switch e := e.(type) {
+    case *EBool:
+        if e.V {
+            return constant.NewInt(types.I1, 1)
+        } else {
+            return constant.NewInt(types.I1, 0)
+        }
+    case *EVoid:
+        return nil
+    }
+    panic(&quot;unknown expression&quot;)
+}
+</code></pre>
+<ol>
+<li>use <strong>conditional jump</strong> to generate <strong>if</strong> statement</li>
+</ol>
+<pre><code class="language-go">func compileStmt(f *ir.Func, bb *ir.Block, stmt Stmt) {
+    switch s := stmt.(type) {
+    case *SIf:
+        thenB := f.NewBlock(&quot;&quot;)
+        compileStmt(f, thenB, s.Then)
+        elseB := f.NewBlock(&quot;&quot;)
+        compileStmt(f, elseB, s.Else)
+        bb.NewCondBr(compileExpr(bb, s.Cond), thenB, elseB)
+        if thenB.Term == nil {
+            leaveB := f.NewBlock(&quot;&quot;)
+            thenB.NewBr(leaveB)
+        }
+    case *SRet:
+        bb.NewRet(compileExpr(bb, s.Val))
+    }
+}
+</code></pre>
+<p>When generating <strong>if</strong>, the most important thing is <strong>leave block</strong>, when if-then block complete, a jump to skip else block required since there has no <strong>block</strong> in high-level language liked concept in LLVM IR. At the end of a basic-block can be a return and since return would terminate a function, jump after return is a dead code, so we have to check we have to generate <strong>leave block</strong> or not. Here is a small example as usage:</p>
+<pre><code class="language-go">f := ir.NewFunc(&quot;foo&quot;, types.Void)
+bb := f.NewBlock(&quot;&quot;)
+
+compileStmt(f, bb, &amp;SIf{
+    Cond: &amp;EBool{V: true},
+    Then: nil,
+    Else: &amp;SRet{Val: &amp;EVoid{}},
+})
+
+// whatever what we did in compileStmt, we use convention that a block leave in the end is empty.
+f.Blocks[len(f.Blocks)-1].NewRet(nil)
+</code></pre>
+<p>We didn't support else-if directly at here, then we need to know how to handle this via parsing. First, we handle a sequence of <code>if</code> <code>(</code> <code>&lt;expr&gt;</code> <code>)</code> <code>&lt;block&gt;</code>. Ok, we can fill AST with <code>Cond</code> and <code>Then</code>, now we should get a token <code>else</code>, then we expect a <code>&lt;block&gt;</code> or <code>if</code>. When we get a <code>&lt;block&gt;</code> this is a obviously can be use as <code>Else</code>, else a <code>if</code> we keep parsing and use it as <code>Else</code> statement since <code>if</code> for sure is a statement. Of course, with this method, generated IR would have some useless label and jump, but flow analyzing should optimized them later, so it's fine.</p>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../funcs/" class="btn btn-neutral float-right" title="More Function">Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+        <a href="../basic/" class="btn btn-neutral" title="Basic Introduction"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+      
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="versions">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href="../basic/" style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+        <span style="margin-left: 15px"><a href="../funcs/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+    <script>var base_url = '../..';</script>
+    <script src="../../js/theme.js" defer></script>
+      <script src="../../search/main.js" defer></script>
+    <script defer>
+        window.onload = function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        };
+    </script>
+
+</body>
+</html>
