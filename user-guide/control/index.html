@@ -59,6 +59,8 @@
     <ul class="current">
     <li class="toctree-l2"><a class="reference internal" href="#if">If</a>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#switch">Switch</a>
+    </li>
     </ul>
                     </li>
                     <li class="toctree-l1"><a class="reference internal" href="../funcs/">More Function</a>
@@ -146,9 +148,9 @@ type SRet struct {
 </code></pre>
 <p>First, we limit expression to <code>EBool</code> and <code>EVoid</code>, and statement to <code>SIf</code> and <code>SRet</code>, to get a simple subset to focus on our purpose. Then we can get transformers to generate control flow <strong>if</strong>.</p>
 <ol>
-<li>generate value for expression, <code>0</code> for <code>false</code>, non <code>0</code> for <code>true</code></li>
+<li>generate value for constant, <code>0</code> for <code>false</code>, non <code>0</code> for <code>true</code>, <code>void</code> is <code>nil</code> in llir/llvm.</li>
 </ol>
-<pre><code class="language-go">func compileExpr(b *ir.Block, e Expr) value.Value {
+<pre><code class="language-go">func compileConstant(b *ir.Block, e Expr) constant.Constant {
     switch e := e.(type) {
     case *EBool:
         if e.V {
@@ -165,20 +167,21 @@ type SRet struct {
 <ol>
 <li>use <strong>conditional jump</strong> to generate <strong>if</strong> statement</li>
 </ol>
-<pre><code class="language-go">func compileStmt(f *ir.Func, bb *ir.Block, stmt Stmt) {
+<pre><code class="language-go">func compileStmt(bb *ir.Block, stmt Stmt) {
+    f := bb.Parent
     switch s := stmt.(type) {
     case *SIf:
         thenB := f.NewBlock(&quot;&quot;)
         compileStmt(f, thenB, s.Then)
         elseB := f.NewBlock(&quot;&quot;)
         compileStmt(f, elseB, s.Else)
-        bb.NewCondBr(compileExpr(bb, s.Cond), thenB, elseB)
+        bb.NewCondBr(compileConstant(bb, s.Cond), thenB, elseB)
         if thenB.Term == nil {
             leaveB := f.NewBlock(&quot;&quot;)
             thenB.NewBr(leaveB)
         }
     case *SRet:
-        bb.NewRet(compileExpr(bb, s.Val))
+        bb.NewRet(compileConstant(bb, s.Val))
     }
 }
 </code></pre>
@@ -195,7 +198,41 @@ compileStmt(f, bb, &amp;SIf{
 // whatever what we did in compileStmt, we use convention that a block leave in the end is empty.
 f.Blocks[len(f.Blocks)-1].NewRet(nil)
 </code></pre>
-<p>We didn't support else-if directly at here, then we need to know how to handle this via parsing. First, we handle a sequence of <code>if</code> <code>(</code> <code>&lt;expr&gt;</code> <code>)</code> <code>&lt;block&gt;</code>. Ok, we can fill AST with <code>Cond</code> and <code>Then</code>, now we should get a token <code>else</code>, then we expect a <code>&lt;block&gt;</code> or <code>if</code>. When we get a <code>&lt;block&gt;</code> this is a obviously can be use as <code>Else</code>, else a <code>if</code> we keep parsing and use it as <code>Else</code> statement since <code>if</code> for sure is a statement. Of course, with this method, generated IR would have some useless label and jump, but flow analyzing should optimized them later, so it's fine.</p>
+<p>We didn't support else-if directly at here, then we need to know how to handle this via parsing. First, we handle a sequence of <code>if</code> <code>(</code> <code>&lt;expr&gt;</code> <code>)</code> <code>&lt;block&gt;</code>. Ok, we can fill AST with <code>Cond</code> and <code>Then</code>, now we should get a token <code>else</code>, then we expect a <code>&lt;block&gt;</code> or <code>if</code>. When we get a <code>&lt;block&gt;</code> this is a obviously can be use as <code>Else</code>, else a <code>if</code> we keep parsing and use it as <code>Else</code> statement since <code>if</code> for sure is a statement. Of course, with this method, generated IR would have some useless label and jump, but flow analyzing should optimize them later, so it's fine.</p>
+<h3 id="switch">Switch</h3>
+<p>LLVM has <a href="https://llvm.org/docs/LangRef.html#switch-instruction">switch instruction</a>, hence, we can use it directly.</p>
+<pre><code class="language-go">func compileStmt(bb *ir.Block, stmt Stmt) {
+    switch s := stmt.(type) {
+    /// ignore
+    case *SSwitch:
+        cases := []*ir.Case{}
+        for _, ca := range s.CaseList {
+            caseB := f.NewBlock(&quot;&quot;)
+            compileStmt(caseB, ca.Stmt)
+            cases = append(cases, ir.NewCase(compileConstant(ca.Expr), caseB))
+        }
+        defaultB := f.NewBlock(&quot;&quot;)
+        compileStmt(defaultB, s.DefaultCase)
+        b.NewSwitch(compileConstant(s.Target), defaultB, cases...)
+    }
+}
+</code></pre>
+<p>For every case, we generate a block, then we can jump to target. Then we put statements into case blocks. Finally, we generate switch for the input block. Notice that, switch instruction of LLVM won't generate <code>break</code> automatically, you can use the same trick in previous section <strong>If</strong> to generate auto leave block for each case(Go semantic), or record leave block and introduces break statement(C semantic). Now let's test it:</p>
+<pre><code class="language-go">f := ir.NewFunc(&quot;foo&quot;, types.Void)
+b := f.NewBlock(&quot;&quot;)
+
+compileStmt(b, &amp;SSwitch{
+    Target: &amp;EBool{V: true},
+    CaseList: []struct {
+        Expr
+        Stmt
+    }{
+        {Expr: &amp;EBool{V: true}, Stmt: &amp;SRet{Val: &amp;EVoid{}}},
+    },
+    DefaultCase: &amp;SRet{Val: &amp;EVoid{}},
+})
+</code></pre>
+<p>The switch statement in this section is quite naive, for advanced semantic like pattern matching with extraction or where clause, you would need to do more.</p>
               
             </div>
           </div>
