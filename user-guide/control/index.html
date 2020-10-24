@@ -61,6 +61,12 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#switch">Switch</a>
     </li>
+    <li class="toctree-l2"><a class="reference internal" href="#loop">Loop</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#do-while">Do While</a>
+    </li>
+        </ul>
+    </li>
     </ul>
                     </li>
                     <li class="toctree-l1"><a class="reference internal" href="../funcs/">More Function</a>
@@ -201,9 +207,18 @@ f.Blocks[len(f.Blocks)-1].NewRet(nil)
 <p>We didn't support else-if directly at here, then we need to know how to handle this via parsing. First, we handle a sequence of <code>if</code> <code>(</code> <code>&lt;expr&gt;</code> <code>)</code> <code>&lt;block&gt;</code>. Ok, we can fill AST with <code>Cond</code> and <code>Then</code>, now we should get a token <code>else</code>, then we expect a <code>&lt;block&gt;</code> or <code>if</code>. When we get a <code>&lt;block&gt;</code> this is a obviously can be use as <code>Else</code>, else a <code>if</code> we keep parsing and use it as <code>Else</code> statement since <code>if</code> for sure is a statement. Of course, with this method, generated IR would have some useless label and jump, but flow analyzing should optimize them later, so it's fine.</p>
 <h3 id="switch">Switch</h3>
 <p>LLVM has <a href="https://llvm.org/docs/LangRef.html#switch-instruction">switch instruction</a>, hence, we can use it directly.</p>
-<pre><code class="language-go">func compileStmt(bb *ir.Block, stmt Stmt) {
+<pre><code class="language-go">type SSwitch struct {
+    Stmt
+    Target   Expr
+    CaseList []struct {
+        Expr
+        Stmt
+    }
+    DefaultCase Stmt
+}
+
+func compileStmt(bb *ir.Block, stmt Stmt) {
     switch s := stmt.(type) {
-    /// ignore
     case *SSwitch:
         cases := []*ir.Case{}
         for _, ca := range s.CaseList {
@@ -217,7 +232,7 @@ f.Blocks[len(f.Blocks)-1].NewRet(nil)
     }
 }
 </code></pre>
-<p>For every case, we generate a block, then we can jump to target. Then we put statements into case blocks. Finally, we generate switch for the input block. Notice that, switch instruction of LLVM won't generate <code>break</code> automatically, you can use the same trick in previous section <strong>If</strong> to generate auto leave block for each case(Go semantic), or record leave block and introduces break statement(C semantic). Now let's test it:</p>
+<p>For every case, we generate a block, then we can jump to target. Then we put statements into case blocks. Finally, we generate switch for the input block. Notice that, switch instruction of LLVM won't generate <code>break</code> automatically, you can use the same trick in the previous section <strong>If</strong> to generate auto leave block for each case(Go semantic), or record leave block and introduces break statement(C semantic). Now let's test it:</p>
 <pre><code class="language-go">f := ir.NewFunc(&quot;foo&quot;, types.Void)
 b := f.NewBlock(&quot;&quot;)
 
@@ -233,6 +248,62 @@ compileStmt(b, &amp;SSwitch{
 })
 </code></pre>
 <p>The switch statement in this section is quite naive, for advanced semantic like pattern matching with extraction or where clause, you would need to do more.</p>
+<h3 id="loop">Loop</h3>
+<h4 id="do-while">Do While</h4>
+<p>Do while is the simplest loop structure since it's code structure almost same to the IR structure. Here we go:</p>
+<pre><code class="language-go">type SDoWhile struct {
+    Stmt
+    Cond  Expr
+    Block Stmt
+}
+
+func compileStmt(block *ir.Block, stmt Stmt) {
+    switch s := stmt.(type) {
+    case *SDoWhile:
+        doB := b.Block
+        // if previous block is not empty, then we need to create new block for do-while loop
+        if b.Insts != nil {
+            doB = f.NewBlock(&quot;&quot;)
+        }
+        compileStmt(doB, s.Block)
+        leaveB := f.NewBlock(&quot;&quot;)
+        doB.NewCondBr(compileConstant(s.Cond), doB, leaveB)
+    }
+}
+</code></pre>
+<p>Can see that, first we check last block is empty or not, if it's empty we keep using it as do-while body. Then we have a leave block, in the end of the do-while body we jump out to leave block or body again depends on condition. Let's test it:</p>
+<pre><code class="language-go">f := ir.NewFunc(&quot;foo&quot;, types.Void)
+b := f.NewBlock(&quot;&quot;)
+
+compileStmt(b, &amp;SDoWhile{
+    Cond: &amp;EBool{V: true},
+    Block: &amp;SDefine{
+        Stmt: nil,
+        Name: &quot;foo&quot;,
+        Typ:  types.I32,
+        Expr: &amp;EI32{V: 1},
+    },
+})
+
+f.Blocks[len(f.Blocks)-1].NewRet(nil)
+</code></pre>
+<p><code>SDefine</code> is define for helping since terminator like <code>ret</code> would be remove when we put another terminator <code>condbr</code>, and return in a loop as an example is weird. Here is code generation for <code>SDefine</code>:</p>
+<pre><code class="language-go">type SDefine struct {
+    Stmt
+    Name string
+    Typ  types.Type
+    Expr Expr
+}
+
+func compileStmt(block *ir.Block, stmt Stmt) {
+    switch s := stmt.(type) {
+    case *SDefine:
+        v := b.NewAlloca(s.Typ)
+        v.SetName(s.Name)
+        b.NewStore(compileConstant(s.Expr), v)
+    }
+}
+</code></pre>
               
             </div>
           </div>
