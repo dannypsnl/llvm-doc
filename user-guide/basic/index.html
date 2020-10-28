@@ -191,8 +191,8 @@ define i32 @main() {
 <p>In LLVM IR assembly, the identifier of global variables are prefixed with an <code>@</code> character.
 Importantly, global variables are represented in LLVM as pointers, so we have to use <a href="https://pkg.go.dev/github.com/llir/llvm/ir?tab=doc#InstLoad">load</a> to retreive the value and <a href="https://pkg.go.dev/github.com/llir/llvm/ir?tab=doc#InstStore">store</a> to update the value of a global variable.</p>
 <h2 id="function">Function</h2>
-<p>Like globals, in LLVM IR assembly the identifier of functions are prefixed with an <code>@</code> character. Functions are composed by a function prototype prototype and a group of basic blocks.
-A funciton without basic blocks is a function declaration. The following code would generate a function declaration:</p>
+<p>Like globals, in LLVM IR assembly the identifier of functions are prefixed with an <code>@</code> character. Functions composed by a function prototype and a group of basic blocks.
+A function without basic blocks is a function declaration. The following code would generate a function declaration:</p>
 <pre><code class="language-go">m.NewFunc(
     &quot;add&quot;,
     types.I32,
@@ -201,7 +201,7 @@ A funciton without basic blocks is a function declaration. The following code wo
 )
 </code></pre>
 <p>Output:</p>
-<pre><code class="language-llvm">declare i32 @add(i32, i32)
+<pre><code class="language-llvm">declare i32 @add(i32 %0, i32 %1)
 </code></pre>
 <p>When we want to bind to existing functions defined in other object files, we would create function declarations.</p>
 <h3 id="function-prototype">Function Prototype</h3>

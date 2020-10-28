@@ -65,6 +65,8 @@
         <ul>
     <li class="toctree-l3"><a class="reference internal" href="#do-while">Do While</a>
     </li>
+    <li class="toctree-l3"><a class="reference internal" href="#for-loop">For Loop</a>
+    </li>
         </ul>
     </li>
     </ul>
@@ -111,6 +113,129 @@
             <div class="section">
               
                 <h1 id="control-flow">Control Flow</h1>
+<p>Before we start, we need to prepare compile function for something like <strong>expression</strong> and <strong>statement</strong> that not our target.</p>
+<pre><code class="language-go">type Expr interface{ isExpr() Expr }
+type EConstant interface {
+    Expr
+    isEConstant() EConstant
+}
+type EVoid struct{ EConstant }
+type EBool struct {
+    EConstant
+    V bool
+}
+type EI32 struct {
+    EConstant
+    V int64
+}
+type EVariable struct {
+    Expr
+    Name string
+}
+type EAdd struct {
+    Expr
+    Lhs, Rhs Expr
+}
+type ELessThan struct {
+    Expr
+    Lhs, Rhs Expr
+}
+</code></pre>
+<p>And compile functions:</p>
+<pre><code class="language-go">func compileConstant(e EConstant) constant.Constant {
+    switch e := e.(type) {
+    case *EI32:
+        return constant.NewInt(types.I32, e.V)
+    case *EBool:
+        // we have no boolean in LLVM IR
+        if e.V {
+            return constant.NewInt(types.I1, 1)
+        } else {
+            return constant.NewInt(types.I1, 0)
+        }
+    case *EVoid:
+        return nil
+    }
+    panic(&quot;unknown expression&quot;)
+}
+
+func (ctx *Context) compileExpr(e Expr) value.Value {
+    switch e := e.(type) {
+    case *EVariable:
+        return ctx.lookupVariable(e.Name)
+    case *EAdd:
+        l, r := ctx.compileExpr(e.Lhs), ctx.compileExpr(e.Rhs)
+        return ctx.NewAdd(l, r)
+    case *ELessThan:
+        l, r := ctx.compileExpr(e.Lhs), ctx.compileExpr(e.Rhs)
+        return ctx.NewICmp(enum.IPredSLT, l, r)
+    case EConstant:
+        return compileConstant(e)
+    }
+    panic(&quot;unimplemented expression&quot;)
+}
+</code></pre>
+<p><code>EVariable</code> would need context to remember variable's value. Here is the related definition of <code>Context</code>:</p>
+<pre><code class="language-go">type Context struct {
+    *ir.Block
+    parent *Context
+    vars   map[string]value.Value
+}
+
+func NewContext(b *ir.Block) *Context {
+    return &amp;Context{
+        Block: b,
+        parent:   nil,
+        vars:     make(map[string]value.Value),
+    }
+}
+
+func (c *Context) NewContext(b *ir.Block) *Context {
+    ctx := NewContext(b)
+    ctx.parent = c
+    return ctx
+}
+
+func (c Context) lookupVariable(name string) value.Value {
+    if v, ok := c.vars[name]; ok {
+        return v
+    } else if c.parent != nil {
+        return c.parent.lookupVariable(name)
+    } else {
+        fmt.Printf(&quot;variable: `%s`\n&quot;, name)
+        panic(&quot;no such variable&quot;)
+    }
+}
+</code></pre>
+<p>Finally, we would have some simple statement as placeholder:</p>
+<pre><code class="language-go">type Stmt interface{ isStmt() Stmt }
+type SDefine struct {
+    Stmt
+    Name string
+    Typ  types.Type
+    Expr Expr
+}
+type SRet struct {
+    Stmt
+    Val Expr
+}
+</code></pre>
+<p>Then compile:</p>
+<pre><code class="language-go">func (ctx *Context) compileStmt(stmt Stmt) {
+    if ctx.Parent != nil {
+        return
+    }
+    f := ctx.Parent
+    switch s := stmt.(type) {
+    case *SDefine:
+        v := ctx.NewAlloca(s.Typ)
+        ctx.NewStore(ctx.compileExpr(s.Expr), v)
+        ctx.vars[s.Name] = v
+    case *SRet:
+        ctx.NewRet(ctx.compileExpr(s.Val))
+    }
+}
+</code></pre>
 <h3 id="if">If</h3>
 <p>Since we can let:</p>
 <pre><code class="language-go">if condition {
@@ -132,62 +257,27 @@
     }
 }
 </code></pre>
-<p>We don't have to convert any <strong>else-if</strong> pattern. Therefore, our source AST looks like this:</p>
-<pre><code class="language-go">type Expr interface{ isExpr() Expr }
-type EVoid struct{ Expr }
-type EBool struct {
-    Expr
-    V bool
-}
-
-type Stmt interface{ isStmt() Stmt }
-type SIf struct {
+<p>We don't have to convert any <strong>else-if</strong> pattern. Therefore, our <code>If</code> looks like this:</p>
+<pre><code class="language-go">type SIf struct {
     Stmt
     Cond Expr
     Then Stmt
     Else Stmt
 }
-type SRet struct {
-    Stmt
-    Val Expr
-}
 </code></pre>
-<p>First, we limit expression to <code>EBool</code> and <code>EVoid</code>, and statement to <code>SIf</code> and <code>SRet</code>, to get a simple subset to focus on our purpose. Then we can get transformers to generate control flow <strong>if</strong>.</p>
-<ol>
-<li>generate value for constant, <code>0</code> for <code>false</code>, non <code>0</code> for <code>true</code>, <code>void</code> is <code>nil</code> in llir/llvm.</li>
-</ol>
-<pre><code class="language-go">func compileConstant(b *ir.Block, e Expr) constant.Constant {
-    switch e := e.(type) {
-    case *EBool:
-        if e.V {
-            return constant.NewInt(types.I1, 1)
-        } else {
-            return constant.NewInt(types.I1, 0)
-        }
-    case *EVoid:
-        return nil
-    }
-    panic(&quot;unknown expression&quot;)
-}
-</code></pre>
-<ol>
-<li>use <strong>conditional jump</strong> to generate <strong>if</strong> statement</li>
-</ol>
-<pre><code class="language-go">func compileStmt(bb *ir.Block, stmt Stmt) {
-    f := bb.Parent
+<p>Then we can get transformers to generate control flow <strong>if</strong>. Using <strong>conditional jump</strong> to generate <strong>if</strong> statement:</p>
+<pre><code class="language-go">func (ctx *Context) compileStmt(stmt Stmt) {
     switch s := stmt.(type) {
     case *SIf:
-        thenB := f.NewBlock(&quot;&quot;)
-        compileStmt(f, thenB, s.Then)
-        elseB := f.NewBlock(&quot;&quot;)
-        compileStmt(f, elseB, s.Else)
-        bb.NewCondBr(compileConstant(bb, s.Cond), thenB, elseB)
-        if thenB.Term == nil {
-            leaveB := f.NewBlock(&quot;&quot;)
-            thenB.NewBr(leaveB)
+        thenCtx := ctx.NewContext(f.NewBlock(&quot;if.then&quot;))
+        thenCtx.compileStmt(s.Then)
+        elseB := f.NewBlock(&quot;if.else&quot;)
+        ctx.NewContext(elseB).compileStmt(s.Else)
+        ctx.NewCondBr(ctx.compileExpr(s.Cond), thenCtx.Block, elseB)
+        if !thenCtx.HasTerminator() {
+            leaveB := f.NewBlock(&quot;leave.if&quot;)
+            thenCtx.NewBr(leaveB)
         }
-    case *SRet:
-        bb.NewRet(compileConstant(bb, s.Val))
     }
 }
 </code></pre>
@@ -195,14 +285,23 @@ type SRet struct {
 <pre><code class="language-go">f := ir.NewFunc(&quot;foo&quot;, types.Void)
 bb := f.NewBlock(&quot;&quot;)
 
-compileStmt(f, bb, &amp;SIf{
+ctx.compileStmt(&amp;SIf{
     Cond: &amp;EBool{V: true},
-    Then: nil,
+    Then: &amp;SRet{Val: &amp;EVoid{}},
     Else: &amp;SRet{Val: &amp;EVoid{}},
 })
+</code></pre>
+<p>Finally, we get:</p>
+<pre><code class="language-llvm">define void @foo() {
+0:
+    br i1 true, label %if.then, label %if.else
 
-// whatever what we did in compileStmt, we use convention that a block leave in the end is empty.
-f.Blocks[len(f.Blocks)-1].NewRet(nil)
+if.then:
+    ret void
+
+if.else:
+    ret void
+}
 </code></pre>
 <p>We didn't support else-if directly at here, then we need to know how to handle this via parsing. First, we handle a sequence of <code>if</code> <code>(</code> <code>&lt;expr&gt;</code> <code>)</code> <code>&lt;block&gt;</code>. Ok, we can fill AST with <code>Cond</code> and <code>Then</code>, now we should get a token <code>else</code>, then we expect a <code>&lt;block&gt;</code> or <code>if</code>. When we get a <code>&lt;block&gt;</code> this is a obviously can be use as <code>Else</code>, else a <code>if</code> we keep parsing and use it as <code>Else</code> statement since <code>if</code> for sure is a statement. Of course, with this method, generated IR would have some useless label and jump, but flow analyzing should optimize them later, so it's fine.</p>
 <h3 id="switch">Switch</h3>
@@ -211,41 +310,55 @@ f.Blocks[len(f.Blocks)-1].NewRet(nil)
     Stmt
     Target   Expr
     CaseList []struct {
-        Expr
+        EConstant // LLVM IR only takes constant, if you want advanced switch semantic, then you can't directly use this approach
         Stmt
     }
     DefaultCase Stmt
 }
 
-func compileStmt(bb *ir.Block, stmt Stmt) {
+func (ctx *Context) compileStmt(stmt Stmt) {
     switch s := stmt.(type) {
     case *SSwitch:
         cases := []*ir.Case{}
         for _, ca := range s.CaseList {
-            caseB := f.NewBlock(&quot;&quot;)
-            compileStmt(caseB, ca.Stmt)
-            cases = append(cases, ir.NewCase(compileConstant(ca.Expr), caseB))
+            caseB := f.NewBlock(&quot;switch.case&quot;)
+            ctx.NewContext(caseB).compileStmt(ca.Stmt)
+            cases = append(cases, ir.NewCase(compileConstant(ca.EConstant), caseB))
         }
-        defaultB := f.NewBlock(&quot;&quot;)
-        compileStmt(defaultB, s.DefaultCase)
-        b.NewSwitch(compileConstant(s.Target), defaultB, cases...)
+        defaultB := f.NewBlock(&quot;switch.default&quot;)
+        ctx.NewContext(defaultB).compileStmt(s.DefaultCase)
+        ctx.NewSwitch(ctx.compileExpr(s.Target), defaultB, cases...)
     }
 }
 </code></pre>
 <p>For every case, we generate a block, then we can jump to target. Then we put statements into case blocks. Finally, we generate switch for the input block. Notice that, switch instruction of LLVM won't generate <code>break</code> automatically, you can use the same trick in the previous section <strong>If</strong> to generate auto leave block for each case(Go semantic), or record leave block and introduces break statement(C semantic). Now let's test it:</p>
 <pre><code class="language-go">f := ir.NewFunc(&quot;foo&quot;, types.Void)
-b := f.NewBlock(&quot;&quot;)
+ctx := NewContext(f.NewBlock(&quot;&quot;))
 
-compileStmt(b, &amp;SSwitch{
+ctx.compileStmt(&amp;SSwitch{
     Target: &amp;EBool{V: true},
     CaseList: []struct {
-        Expr
+        EConstant
         Stmt
     }{
-        {Expr: &amp;EBool{V: true}, Stmt: &amp;SRet{Val: &amp;EVoid{}}},
+        {EConstant: &amp;EBool{V: true}, Stmt: &amp;SRet{Val: &amp;EVoid{}}},
     },
     DefaultCase: &amp;SRet{Val: &amp;EVoid{}},
 })
+</code></pre>
+<p>And output:</p>
+<pre><code class="language-llvm">define void @foo() {
+0:
+    switch i1 true, label %switch.default [
+        i1 true, label %switch.case
+    ]
+
+switch.case:
+    ret void
+
+switch.default:
+    ret void
+}
 </code></pre>
 <p>The switch statement in this section is quite naive, for advanced semantic like pattern matching with extraction or where clause, you would need to do more.</p>
 <h3 id="loop">Loop</h3>
@@ -257,25 +370,23 @@ compileStmt(b, &amp;SSwitch{
     Block Stmt
 }
 
-func compileStmt(block *ir.Block, stmt Stmt) {
+func (ctx *Context) compileStmt(stmt Stmt) {
     switch s := stmt.(type) {
     case *SDoWhile:
-        doB := b.Block
-        // if previous block is not empty, then we need to create new block for do-while loop
-        if b.Insts != nil {
-            doB = f.NewBlock(&quot;&quot;)
-        }
-        compileStmt(doB, s.Block)
-        leaveB := f.NewBlock(&quot;&quot;)
-        doB.NewCondBr(compileConstant(s.Cond), doB, leaveB)
+        doCtx := ctx.NewContext(f.NewBlock(&quot;do.while.body&quot;))
+        ctx.NewBr(doCtx.Block)
+        leaveB := f.NewBlock(&quot;leave.do.while&quot;)
+        doCtx.leaveBlock = leaveB
+        doCtx.compileStmt(s.Block)
+        doCtx.NewCondBr(doCtx.compileExpr(s.Cond), doCtx.Block, leaveB)
     }
 }
 </code></pre>
 <p>Can see that, first we check last block is empty or not, if it's empty we keep using it as do-while body. Then we have a leave block, in the end of the do-while body we jump out to leave block or body again depends on condition. Let's test it:</p>
 <pre><code class="language-go">f := ir.NewFunc(&quot;foo&quot;, types.Void)
-b := f.NewBlock(&quot;&quot;)
+ctx := NewContext(f.NewBlock(&quot;&quot;))
 
-compileStmt(b, &amp;SDoWhile{
+ctx.compileStmt(&amp;SDoWhile{
     Cond: &amp;EBool{V: true},
     Block: &amp;SDefine{
         Stmt: nil,
@@ -287,23 +398,81 @@ compileStmt(b, &amp;SDoWhile{
 
 f.Blocks[len(f.Blocks)-1].NewRet(nil)
 </code></pre>
-<p><code>SDefine</code> is define for helping since terminator like <code>ret</code> would be remove when we put another terminator <code>condbr</code>, and return in a loop as an example is weird. Here is code generation for <code>SDefine</code>:</p>
-<pre><code class="language-go">type SDefine struct {
-    Stmt
-    Name string
-    Typ  types.Type
-    Expr Expr
-}
+<p>And output:</p>
+<pre><code class="language-llvm">define void @foo() {
+0:
+    br label %do.while.body
 
-func compileStmt(block *ir.Block, stmt Stmt) {
+do.while.body:
+    %1 = alloca i32
+    store i32 1, i32* %1
+    br i1 true, label %do.while.body, label %leave.do.while
+
+leave.do.while:
+    ret void
+}
+</code></pre>
+<h4 id="for-loop">For Loop</h4>
+<p>For-loop would be an interesting case, at here, I only present a for-loop that can only have one initialize variable to reduce complexity, therefore, we have a AST like this:</p>
+<pre><code class="language-go">type SForLoop struct {
+    Stmt
+    InitName string
+    InitExpr Expr
+    Step     Expr
+    Cond     Expr
+    Block    Stmt
+}
+</code></pre>
+<p>For example, <code>for (x=0; x=x+1; x&lt;10) {}</code> break down to:</p>
+<p>1.<code>InitName</code>: <code>x</code>
+ 2. <code>InitExpr</code>: <code>0</code>
+ 3. <code>Step</code>: <code>x+1</code>
+ 4. <code>Cond</code>: <code>x&lt;10</code>
+ 5. <code>Block</code>: <code>{}</code></p>
+<p>At first view, people might think for-loop is as easy as do-while, but in SSA form, reuse variable in a loop need a new instruction: <a href="https://llvm.org/docs/LangRef.html#i-phi">phi</a>.</p>
+<pre><code class="language-go">func (ctx *Context) compileStmt(stmt Stmt) {
     switch s := stmt.(type) {
-    case *SDefine:
-        v := b.NewAlloca(s.Typ)
-        v.SetName(s.Name)
-        b.NewStore(compileConstant(s.Expr), v)
+    case *SForLoop:
+        loopCtx := ctx.NewContext(f.NewBlock(&quot;for.loop.body&quot;))
+        ctx.NewBr(loopCtx.Block)
+        firstAppear := loopCtx.NewPhi(ir.NewIncoming(loopCtx.compileExpr(s.InitExpr), ctx.Block))
+        loopCtx.vars[s.InitName] = firstAppear
+        step := loopCtx.compileExpr(s.Step)
+        firstAppear.Incs = append(firstAppear.Incs, ir.NewIncoming(step, loopCtx.Block))
+        loopCtx.vars[s.InitName] = step
+        leaveB := f.NewBlock(&quot;leave.for.loop&quot;)
+        loopCtx.leaveBlock = leaveB
+        loopCtx.compileStmt(s.Block)
+        loopCtx.NewCondBr(loopCtx.compileExpr(s.Cond), loopCtx.Block, leaveB)
     }
 }
 </code></pre>
+<ol>
+<li>Create a loop body context</li>
+<li>jump from the previous block</li>
+<li>Put phi into loop body</li>
+<li>Phi would have two incoming, first is <code>InitExpr</code>, the second one is <code>Step</code> result.</li>
+<li>compile step</li>
+<li>compile the conditional branch, jump to loop body or leave block</li>
+</ol>
+<p>It generates:</p>
+<pre><code class="language-llvm">define void @foo() {
+0:
+    br label %for.loop.body
+
+for.loop.body:
+    %1 = phi i32 [ 0, %0 ], [ %2, %for.loop.body ]
+    %2 = add i32 %1, 1
+    %3 = alloca i32
+    store i32 2, i32* %3
+    %4 = icmp slt i32 %2, 10
+    br i1 %4, label %for.loop.body, label %leave.for.loop
+
+leave.for.loop:
+    ret void
+}
+</code></pre>
+<p>In fact, you can also avoid phi, you can make a try as practice.</p>
               
             </div>
           </div>
