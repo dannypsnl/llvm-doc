@@ -449,11 +449,14 @@ leave.do.while:
 }
 </code></pre>
 <p>For example, <code>for (x=0; x=x+1; x&lt;10) {}</code> break down to:</p>
-<p>1.<code>InitName</code>: <code>x</code>
-2. <code>InitExpr</code>: <code>0</code>
-3. <code>Step</code>: <code>x+1</code>
-4. <code>Cond</code>: <code>x&lt;10</code>
-5. <code>Block</code>: <code>{}</code></p>
+<pre><code class="language-go">SForLoop {
+    InitName: `x`
+    InitExpr: `0`
+    Step: `x + 1`
+    Cond: `x &lt; 10`
+    Block: `{}`
+}
+</code></pre>
 <p>At first view, people might think for-loop is as easy as do-while, but in SSA form, reuse variable in a loop need a new instruction: <a href="https://llvm.org/docs/LangRef.html#i-phi">phi</a>.</p>
 <pre><code class="language-go">func (ctx *Context) compileStmt(stmt Stmt) {
     switch s := stmt.(type) {
