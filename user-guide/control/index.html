@@ -63,6 +63,8 @@
     </li>
     <li class="toctree-l2"><a class="reference internal" href="#loop">Loop</a>
         <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#break">Break</a>
+    </li>
     <li class="toctree-l3"><a class="reference internal" href="#do-while">Do While</a>
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#for-loop">For Loop</a>
@@ -362,6 +364,29 @@ switch.default:
 </code></pre>
 <p>The switch statement in this section is quite naive, for advanced semantic like pattern matching with extraction or where clause, you would need to do more.</p>
 <h3 id="loop">Loop</h3>
+<h4 id="break">Break</h4>
+<p>Break statement needs to extend <code>Context</code>, with a new field called <code>leaveBlock</code>:</p>
+<pre><code class="language-go">type Context struct {
+    // ...
+    leaveBlock *ir.Block
+}
+
+func NewContext(b *ir.Block) *Context {
+    return &amp;Context{
+        // ...
+        leaveBlock: nil,
+    }
+}
+</code></pre>
+<p>Then it's just a jump:</p>
+<pre><code class="language-go">func (ctx *Context) compileStmt(stmt Stmt) {
+    switch s := stmt.(type) {
+    case *SBreak:
+        ctx.NewBr(ctx.leaveBlock)
+    }
+}
+</code></pre>
+<p>Remember to update leave block information(and remove it when needed), and continue can be done in the same way.</p>
 <h4 id="do-while">Do While</h4>
 <p>Do while is the simplest loop structure since it's code structure almost same to the IR structure. Here we go:</p>
 <pre><code class="language-go">type SDoWhile struct {
@@ -382,7 +407,7 @@ func (ctx *Context) compileStmt(stmt Stmt) {
     }
 }
 </code></pre>
-<p>Can see that, first we check last block is empty or not, if it's empty we keep using it as do-while body. Then we have a leave block, in the end of the do-while body we jump out to leave block or body again depends on condition. Let's test it:</p>
+<p>Can see that, we jump to do-while body directly. Then we have a leave block, in the end of the do-while body we jump out to leave block or body again depends on condition. Let's test it:</p>
 <pre><code class="language-go">f := ir.NewFunc(&quot;foo&quot;, types.Void)
 ctx := NewContext(f.NewBlock(&quot;&quot;))
 
