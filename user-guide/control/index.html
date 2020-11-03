@@ -69,6 +69,8 @@
     </li>
     <li class="toctree-l3"><a class="reference internal" href="#for-loop">For Loop</a>
     </li>
+    <li class="toctree-l3"><a class="reference internal" href="#while">While</a>
+    </li>
         </ul>
     </li>
     </ul>
@@ -483,7 +485,21 @@ leave.do.while:
 <li>compile step</li>
 <li>compile the conditional branch, jump to loop body or leave block</li>
 </ol>
-<p>It generates:</p>
+<p>Testing:</p>
+<pre><code class="language-go">f := ir.NewFunc(&quot;foo&quot;, types.Void)
+ctx := NewContext(f.NewBlock(&quot;&quot;))
+
+ctx.compileStmt(&amp;SForLoop{
+    InitName: &quot;x&quot;,
+    InitExpr: &amp;EI32{V: 0},
+    Step:     &amp;EAdd{Lhs: &amp;EVariable{Name: &quot;x&quot;}, Rhs: &amp;EI32{V: 1}},
+    Cond:     &amp;ELessThan{Lhs: &amp;EVariable{Name: &quot;x&quot;}, Rhs: &amp;EI32{V: 10}},
+    Block:    &amp;SDefine{Name: &quot;foo&quot;, Typ: types.I32, Expr: &amp;EI32{V: 2}},
+})
+
+f.Blocks[len(f.Blocks)-1].NewRet(nil)
+</code></pre>
+<p>The test generates:</p>
 <pre><code class="language-llvm">define void @foo() {
 0:
     br label %for.loop.body
@@ -501,6 +517,67 @@ leave.for.loop:
 }
 </code></pre>
 <p>In fact, you can also avoid phi, you can make a try as practice.</p>
+<h4 id="while">While</h4>
+<p>The last kind of loop we want to present is <strong>while</strong> loop.</p>
+<pre><code class="language-go">type SWhile struct {
+    Stmt
+    Cond  Expr
+    Block Stmt
+}
+</code></pre>
+<p>It looks just like <strong>do while</strong>, but have different semantic, it might not execute it's body. Here is the implementation.</p>
+<pre><code class="language-go">func (ctx *Context) compileStmt(stmt Stmt) {
+    switch s := stmt.(type) {
+    case *SWhile:
+        condCtx := ctx.NewContext(f.NewBlock(&quot;while.loop.cond&quot;))
+        ctx.NewBr(condCtx.Block)
+        loopCtx := ctx.NewContext(f.NewBlock(&quot;while.loop.body&quot;))
+        leaveB := f.NewBlock(&quot;leave.do.while&quot;)
+        condCtx.NewCondBr(condCtx.compileExpr(s.Cond), loopCtx.Block, leaveB)
+        condCtx.leaveBlock = leaveB
+        loopCtx.leaveBlock = leaveB
+        loopCtx.compileStmt(s.Block)
+        loopCtx.NewBr(condCtx.Block)
+    }
+}
+</code></pre>
+<p>We would need two blocks since <code>br</code> is a terminator, then the logic is simple:</p>
+<ol>
+<li><code>while.loop.cond</code> would jump to <code>while.loop.body</code> or <code>leave.do.while</code> by condition</li>
+<li><code>while.loop.body</code> always back to <code>while.loop.cond</code>.</li>
+</ol>
+<p>Finally, test:</p>
+<pre><code class="language-go">f := ir.NewFunc(&quot;foo&quot;, types.Void)
+ctx := NewContext(f.NewBlock(&quot;&quot;))
+
+ctx.compileStmt(&amp;SWhile{
+    Cond: &amp;EBool{V: true},
+    Block: &amp;SDefine{
+        Name: &quot;x&quot;,
+        Typ:  types.I32,
+        Expr: &amp;EI32{V: 0},
+    },
+})
+
+f.Blocks[len(f.Blocks)-1].NewRet(nil)
+</code></pre>
+<p>and output:</p>
+<pre><code class="language-llvm">define void @foo() {
+0:
+    br label %while.loop.cond
+
+while.loop.cond:
+    br i1 true, label %while.loop.body, label %leave.do.while
+
+while.loop.body:
+    %1 = alloca i32
+    store i32 0, i32* %1
+    br label %while.loop.cond
+
+leave.do.while:
+    ret void
+}
+</code></pre>
               
             </div>
           </div>
